@@ -351,8 +351,8 @@ read_body (gint fd, glong content_length, RTSPMessage * msg)
 
   while (to_read > 0) {
     gint ret;
-	
-	ret = select (fd+1, &fds, NULL, NULL, &tv);
+    
+    ret = select (fd+1, &fds, NULL, NULL, &tv);
     if (ret == 0) {
       /* timeout */
       goto read_error;

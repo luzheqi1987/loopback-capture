@@ -29,8 +29,8 @@ typedef struct raop_client_struct raop_client_t;
 typedef int (*raop_client_stream_cb_func_t) (void *, guchar *, int);
 
 typedef struct {
-	raop_client_stream_cb_func_t func;
-	void *data;	
+    raop_client_stream_cb_func_t func;
+    void *data;	
 } raop_client_stream_cb_t;
 
 
