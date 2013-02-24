@@ -2,16 +2,20 @@
 
 #include <windows.h>
 #include <stdio.h>
-#include <mmsystem.h>
-#include <mmdeviceapi.h>
 
 #include "prefs.h"
 #include "loopback-capture.h"
 
 int do_everything(int argc, LPCWSTR argv[]);
 
+DWORD WINAPI raop_thread(LPVOID pContext);
+
+
 int _cdecl wmain(int argc, LPCWSTR argv[]) {
     HRESULT hr = S_OK;
+
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
 
     hr = CoInitialize(NULL);
     if (FAILED(hr)) {
@@ -20,7 +24,7 @@ int _cdecl wmain(int argc, LPCWSTR argv[]) {
     }
 
     int result = do_everything(argc, argv);
-    
+
     CoUninitialize();
     return result;
 }
@@ -59,10 +63,10 @@ int do_everything(int argc, LPCWSTR argv[]) {
     threadArgs.hr = E_UNEXPECTED; // thread will overwrite this
     threadArgs.pMMDevice = prefs.m_pMMDevice;
     threadArgs.bInt16 = prefs.m_bInt16;
-    threadArgs.hFile = prefs.m_hFile;
     threadArgs.hStartedEvent = hStartedEvent;
     threadArgs.hStopEvent = hStopEvent;
     threadArgs.nFrames = 0;
+    threadArgs.prefs = &prefs;
 
     HANDLE hThread = CreateThread(
         NULL, 0,
@@ -114,6 +118,13 @@ int do_everything(int argc, LPCWSTR argv[]) {
         return -__LINE__;
     }
 
+    CreateThread(
+        NULL, 0,
+        raop_thread, &prefs,
+        0, NULL
+    );
+
+
     printf("Press Enter to quit...\n");
 
     // wait for the thread to terminate early
@@ -122,11 +133,9 @@ int do_everything(int argc, LPCWSTR argv[]) {
 
     bool bKeepWaiting = true;
     while (bKeepWaiting) {
-
         dwWaitResult = WaitForMultipleObjects(2, rhHandles, FALSE, INFINITE);
 
         switch (dwWaitResult) {
-
             case WAIT_OBJECT_0: // hThread
                 printf("The thread terminated early - something bad happened\n");
                 bKeepWaiting = false;
@@ -169,6 +178,9 @@ int do_everything(int argc, LPCWSTR argv[]) {
         }
     }
 
+    printf("press ENTER...\n");
+    getc(stdin);
+
     DWORD exitCode;
     if (!GetExitCodeThread(hThread, &exitCode)) {
         printf("GetExitCodeThread failed: last error is %u\n", GetLastError());
@@ -194,59 +206,5 @@ int do_everything(int argc, LPCWSTR argv[]) {
     CloseHandle(hThread);
     CloseHandle(hStopEvent);
 
-    // everything went well... fixup the fact chunk in the file
-    MMRESULT result = mmioClose(prefs.m_hFile, 0);
-    prefs.m_hFile = NULL;
-    if (MMSYSERR_NOERROR != result) {
-        printf("mmioClose failed: MMSYSERR = %u\n", result);
-        return -__LINE__;
-    }
-
-    // reopen the file in read/write mode
-    MMIOINFO mi = {0};
-    prefs.m_hFile = mmioOpen(const_cast<LPWSTR>(prefs.m_szFilename), &mi, MMIO_READWRITE);
-    if (NULL == prefs.m_hFile) {
-        printf("mmioOpen(\"%ls\", ...) failed. wErrorRet == %u\n", prefs.m_szFilename, mi.wErrorRet);
-        return -__LINE__;
-    }
-
-    // descend into the RIFF/WAVE chunk
-    MMCKINFO ckRIFF = {0};
-    ckRIFF.ckid = MAKEFOURCC('W', 'A', 'V', 'E'); // this is right for mmioDescend
-    result = mmioDescend(prefs.m_hFile, &ckRIFF, NULL, MMIO_FINDRIFF);
-    if (MMSYSERR_NOERROR != result) {
-        printf("mmioDescend(\"WAVE\") failed: MMSYSERR = %u\n", result);
-        return -__LINE__;
-    }
-
-    // descend into the fact chunk
-    MMCKINFO ckFact = {0};
-    ckFact.ckid = MAKEFOURCC('f', 'a', 'c', 't');
-    result = mmioDescend(prefs.m_hFile, &ckFact, &ckRIFF, MMIO_FINDCHUNK);
-    if (MMSYSERR_NOERROR != result) {
-        printf("mmioDescend(\"fact\") failed: MMSYSERR = %u\n", result);
-        return -__LINE__;
-    }
-
-    // write the correct data to the fact chunk
-    LONG lBytesWritten = mmioWrite(
-        prefs.m_hFile,
-        reinterpret_cast<PCHAR>(&threadArgs.nFrames),
-        sizeof(threadArgs.nFrames)
-    );
-    if (lBytesWritten != sizeof(threadArgs.nFrames)) {
-        printf("Updating the fact chunk wrote %u bytes; expected %u\n", lBytesWritten, (UINT32)sizeof(threadArgs.nFrames));
-        return -__LINE__;
-    }
-
-    // ascend out of the fact chunk
-    result = mmioAscend(prefs.m_hFile, &ckFact, 0);
-    if (MMSYSERR_NOERROR != result) {
-        printf("mmioAscend(\"fact\") failed: MMSYSERR = %u\n", result);
-        return -__LINE__;
-    }
-
-    // let prefs' destructor call mmioClose
-    
     return 0;
 }

@@ -1,4 +1,4 @@
-// silence.h
+#include "prefs.h"
 
 // call CreateThread on this function
 // feed it the address of a LoopbackCaptureThreadFunctionArguments
@@ -10,11 +10,11 @@
 struct LoopbackCaptureThreadFunctionArguments {
     IMMDevice *pMMDevice;
     bool bInt16;
-    HMMIO hFile;
     HANDLE hStartedEvent;
     HANDLE hStopEvent;
     UINT32 nFrames;
     HRESULT hr;
+    CPrefs *prefs;
 };
 
 DWORD WINAPI LoopbackCaptureThreadFunction(LPVOID pContext);

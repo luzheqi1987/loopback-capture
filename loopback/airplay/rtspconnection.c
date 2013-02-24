@@ -412,6 +412,10 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
   if (conn == NULL || msg == NULL)
     return RTSP_EINVAL;
 
+  if (msg->hdr_fields == NULL) {
+      msg->hdr_fields = new std::map<RTSPHeaderField, std::string>;
+  }
+
   line = 0;
 
   need_body = TRUE;
@@ -513,7 +517,7 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
   /* read the rest of the body if needed */
   if (need_body) {
     /* see if there is a Content-Length header */
-      if (msg->hdr_fields && msg->hdr_fields->count(RTSP_HDR_CONTENT_LENGTH) > 0) {
+      if (msg->hdr_fields->count(RTSP_HDR_CONTENT_LENGTH) > 0) {
       /* there is, read the body */
           content_length = atol (msg->hdr_fields->at(RTSP_HDR_CONTENT_LENGTH).c_str());
       res = read_body (conn->fd, content_length, msg);
@@ -523,7 +527,7 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
     {
       const char *session_id;
 
-      if (msg->hdr_fields && msg->hdr_fields->count(RTSP_HDR_SESSION) > 0) {
+      if (msg->hdr_fields->count(RTSP_HDR_SESSION) > 0) {
           session_id = msg->hdr_fields->at(RTSP_HDR_SESSION).c_str();
         gint sesslen, maxlen, i;
 

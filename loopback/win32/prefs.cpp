@@ -8,36 +8,38 @@
 
 #include "prefs.h"
 
-#define DEFAULT_FILE L"loopback-capture.wav"
-
 void usage(LPCWSTR exe);
 HRESULT get_default_device(IMMDevice **ppMMDevice);
 HRESULT list_devices();
 HRESULT get_specific_device(LPCWSTR szLongName, IMMDevice **ppMMDevice);
-HRESULT open_file(LPCWSTR szFileName, HMMIO *phFile);
 
 void usage(LPCWSTR exe) {
     printf(
         "%ls -?\n"
         "%ls --list-devices\n"
-        "%ls [--device \"Device long name\"] [--file \"file name\"] [--int-16]\n"
+        "%ls [--device \"Device long name\"] [--int-16]\n"
         "\n"
         "    -? prints this message.\n"
         "    --list-devices displays the long names of all active playback devices.\n"
         "    --device captures from the specified device (default if omitted)\n"
-        "    --file saves the output to a file (%ls if omitted)\n"
         "    --int-16 attempts to coerce data to 16-bit integer format\n",
-        exe, exe, exe, DEFAULT_FILE
+        exe, exe, exe
     );
 }
 
 CPrefs::CPrefs(int argc, LPCWSTR argv[], HRESULT &hr)
 : m_pMMDevice(NULL)
-, m_hFile(NULL)
-, m_bInt16(false)
+, m_bInt16(true)
 , m_pwfx(NULL)
-, m_szFilename(NULL)
+, m_AudioBufferLength(0)
+, m_AudioBufferSize(32000)
+, m_AudioBufferLastRead(0)
+, m_AudioBufferLastWrite(0)
+, m_AudioBuffer(NULL)
 {
+    m_AudioBufferMutex = CreateMutex(NULL, FALSE, NULL);
+    m_AudioBuffer = (unsigned char*)malloc(m_AudioBufferSize);
+
     switch (argc) {
         case 2:
             if (0 == _wcsicmp(argv[1], L"-?") || 0 == _wcsicmp(argv[1], L"/?")) {
@@ -83,24 +85,6 @@ CPrefs::CPrefs(int argc, LPCWSTR argv[], HRESULT &hr)
                     continue;
                 }
 
-                // --file
-                if (0 == _wcsicmp(argv[i], L"--file")) {
-                    if (NULL != m_szFilename) {
-                        printf("Only one --file switch is allowed\n");
-                        hr = E_INVALIDARG;
-                        return;
-                    }
-
-                    if (i++ == argc) {
-                        printf("--file switch requires an argument\n");
-                        hr = E_INVALIDARG;
-                        return;
-                    }
-
-                    m_szFilename = argv[i];
-                    continue;
-                }
-
                 // --int-16
                 if (0 == _wcsicmp(argv[i], L"--int-16")) {
                     if (m_bInt16) {
@@ -125,17 +109,6 @@ CPrefs::CPrefs(int argc, LPCWSTR argv[], HRESULT &hr)
                     return;
                 }
             }
-
-            // if no filename specified, use default
-            if (NULL == m_szFilename) {
-                m_szFilename = DEFAULT_FILE;
-            }
-
-            // open file
-            hr = open_file(m_szFilename, &m_hFile);
-            if (FAILED(hr)) {
-                return;
-            }
     }
 }
 
@@ -144,13 +117,15 @@ CPrefs::~CPrefs() {
         m_pMMDevice->Release();
     }
 
-    if (NULL != m_hFile) {
-        mmioClose(m_hFile, 0);
-    }
-
     if (NULL != m_pwfx) {
         CoTaskMemFree(m_pwfx);
     }
+
+    if (NULL != m_AudioBuffer) {
+        free(m_AudioBuffer);
+    }
+
+    CloseHandle(m_AudioBufferMutex);
 }
 
 HRESULT get_default_device(IMMDevice **ppMMDevice) {
@@ -366,25 +341,6 @@ HRESULT get_specific_device(LPCWSTR szLongName, IMMDevice **ppMMDevice) {
     if (NULL == *ppMMDevice) {
         printf("Could not find a device named %ls\n", szLongName);
         return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-    }
-
-    return S_OK;
-}
-
-HRESULT open_file(LPCWSTR szFileName, HMMIO *phFile) {
-    MMIOINFO mi = {0};
-
-    *phFile = mmioOpen(
-        // some flags cause mmioOpen write to this buffer
-        // but not any that we're using
-        const_cast<LPWSTR>(szFileName),
-        &mi,
-        MMIO_WRITE | MMIO_CREATE
-    );
-
-    if (NULL == *phFile) {
-        printf("mmioOpen(\"%ls\", ...) failed. wErrorRet == %u\n", szFileName, mi.wErrorRet);
-        return E_FAIL;
     }
 
     return S_OK;
