@@ -1,4 +1,10 @@
 #include "net_utils.h"
+#include <io.h>
+#include <Windows.h>
+#include <winsock.h>
+#include <fcntl.h>
+#include "glib.h"
+typedef int socklen_t;
 
 char *
 get_local_addr (int fd)
@@ -15,9 +21,9 @@ get_local_addr (int fd)
 int
 set_sock_nonblock (int sockfd)
 {
-    int flags;
-    flags = fcntl (sockfd, F_GETFL, 0);
-    return fcntl (sockfd, F_SETFL, flags | O_NONBLOCK);
+    u_long mode = 1;
+    ioctlsocket(sockfd, FIONBIO, &mode);
+    return 0;
 }
 
 int
@@ -48,7 +54,12 @@ tcp_connect (int sock_fd, const char *host, unsigned int port)
     }
     addr.sin_port = htons (port);
     ret = connect (sock_fd, (struct sockaddr *)&addr, sizeof (struct sockaddr));
-
+    if (ret == -1) {
+        int err = WSAGetLastError();
+        if (err == WSAEINPROGRESS || err == WSAEWOULDBLOCK) {
+            return 0;
+        }
+    }
     return ret;
 }
 
@@ -63,7 +74,7 @@ tcp_write (int fd, const char *buf, int n)
     ptr = buf;
     nleft = n;
     while (nleft > 0) {
-        ret = write (fd, ptr, nleft);
+        ret = send (fd, ptr, nleft, 0);
         if (ret <= 0) {
             if (ret < 0 && errno == EWOULDBLOCK) {
                 break;

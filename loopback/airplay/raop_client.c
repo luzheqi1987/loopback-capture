@@ -1,5 +1,4 @@
-#include <string.h>
-#include <unistd.h>
+#include "glib.h"
 
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
@@ -173,7 +172,7 @@ raop_send_sample (raop_client_t *rc)
 static gint
 raop_rtsp_get_reply (raop_client_t *rc)
 {
-    RTSPMessage response = { 0 };
+    RTSPMessage response = { (RTSPMsgType)0 };
     RTSPResult res;
     gchar *ajstatus;
     gchar **params;
@@ -182,33 +181,33 @@ raop_rtsp_get_reply (raop_client_t *rc)
     if (res != RTSP_OK)
         return RAOP_EFAIL;
 
-    res = rtsp_message_get_header (&response, RTSP_HDR_AUDIO_JACK_STATUS,
-                                   &ajstatus);
-    if (res == RTSP_OK) {
-        params = g_strsplit (ajstatus, "; ", -1);
-        if (!g_ascii_strncasecmp (params[0], "connected", strlen ("connected"))) {
-            rc->jack_status = AUDIO_JACK_CONNECTED;
-        } else {
-            rc->jack_status = AUDIO_JACK_DISCONNECTED;
-        }
-        if (!g_ascii_strncasecmp (params[1], "type=analog", strlen ("type=analog"))) {
-            rc->jack_type = AUDIO_JACK_ANALOG;
-        } else {
-            rc->jack_type = AUDIO_JACK_DIGITAL;
-        }
-        g_strfreev (params);
-    }
+	// TODO
+    //if (response->hdr_fields->count(RTSP_HDR_AUDIO_JACK_STATUS) > 0) {
+    //	RTSP_HDR_AUDIO_JACK_STATUS
+    //	params = g_strsplit (ajstatus, "; ", -1);
+    //	if (!g_ascii_strncasecmp (params[0], "connected", strlen ("connected"))) {
+    //		rc->jack_status = AUDIO_JACK_CONNECTED;
+    //	} else {
+    //		rc->jack_status = AUDIO_JACK_DISCONNECTED;
+    //	}
+    //	if (!g_ascii_strncasecmp (params[1], "type=analog", strlen ("type=analog"))) {
+    //		rc->jack_type = AUDIO_JACK_ANALOG;
+    //	} else {
+    //		rc->jack_type = AUDIO_JACK_DIGITAL;
+    //	}
+    //	g_strfreev (params);
+    //}
+    rc->jack_status = AUDIO_JACK_CONNECTED;
+    rc->jack_type = AUDIO_JACK_ANALOG;
 
     if (rc->rtsp_state == RAOP_RTSP_SETUP) {
-        gchar *transport;
-        gchar *port_str;
-        res = rtsp_message_get_header (&response, RTSP_HDR_TRANSPORT,
-                                       &transport);
-        if (res != RTSP_OK)
+    
+        if (response.hdr_fields->count(RTSP_HDR_TRANSPORT) == 0) 
             return RAOP_EFAIL;
-
-        port_str = g_strrstr (transport, "server_port=");
-        rc->stream_port = strtol (port_str + strlen ("server_port="), NULL, 10);
+        std::string transport = response.hdr_fields->at(RTSP_HDR_TRANSPORT).c_str();
+        
+        size_t pos = transport.find_last_of("server_port=", std::string::npos);
+        rc->stream_port = strtol (transport.c_str() + pos + strlen ("server_port="), NULL, 10);
     }
 
     return RAOP_EOK;
@@ -239,32 +238,47 @@ b64_encode_alloc (const guchar *data, int size, char **out)
 static gint
 raop_rtsp_announce (raop_client_t *rc)
 {
-    RTSPMessage request = { 0 };
+    RTSPMessage request = { (RTSPMsgType)0 };
     RTSPResult res;
     guchar enc_aes_key[512];
     gchar *key;
     gchar *iv;
     gint size;
-    gchar *sdp_buf;
+    gchar *sdp_buf = g_malloc(20000);
     gchar *ac;
     gint ret = RAOP_EOK;
 
     size = raop_rsa_encrypt (rc->aes_key_str, 16, enc_aes_key);
 
     size = b64_encode_alloc (enc_aes_key, size, &key);
-    g_strdelimit (key, "=", '\0');
+    for (int i = 0; i < strlen(key); i++) {
+        if (key[i] == '=') {
+            key[i] = '\0';
+            break;
+        }
+    }
     size = b64_encode_alloc (rc->aes_iv, 16, &iv);
-    g_strdelimit (iv, "=", '\0');
+    for (int i = 0; i < strlen(iv); i++) {
+        if (iv[i] == '=') {
+            iv[i] = '\0';
+            break;
+        }
+    }
     size = b64_encode_alloc (rc->challenge, 16, &ac);
-    g_strdelimit (ac, "=", '\0');
+    for (int i = 0; i < strlen(ac); i++) {
+        if (ac[i] == '=') {
+            ac[i] = '\0';
+            break;
+        }
+    }
 
     res = rtsp_message_init_request (RTSP_ANNOUNCE, rc->rtsp_url, &request);
-    rtsp_message_add_header (&request, RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT);
-    rtsp_message_add_header (&request, RTSP_HDR_CLIENT_INSTANCE, rc->client_id);
-    rtsp_message_add_header (&request, RTSP_HDR_APPLE_CHALLENGE, ac);
-    rtsp_message_add_header (&request, RTSP_HDR_CONTENT_TYPE, "application/sdp");
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_CLIENT_INSTANCE, rc->client_id));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_APPLE_CHALLENGE, ac));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_CONTENT_TYPE, "application/sdp"));
 
-    sdp_buf = g_strdup_printf ("v=0\r\n"
+    sprintf (sdp_buf, "v=0\r\n"
                                "o=iTunes %s 0 IN IP4 %s\r\n"
                                "s=iTunes\r\n"
                                "c=IN IP4 %s\r\n"
@@ -291,13 +305,13 @@ raop_rtsp_announce (raop_client_t *rc)
 static gint
 raop_rtsp_setup (raop_client_t *rc)
 {
-    RTSPMessage request = { 0 };
+    RTSPMessage request = { (RTSPMsgType)0 };
     RTSPResult res;
 
     res = rtsp_message_init_request (RTSP_SETUP, rc->rtsp_url, &request);
-    rtsp_message_add_header (&request, RTSP_HDR_CLIENT_INSTANCE, rc->client_id);
-    rtsp_message_add_header (&request, RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT);
-    rtsp_message_add_header (&request, RTSP_HDR_TRANSPORT, "RTP/AVP/TCP;unicast;interleaved=0-1;mode=record");/* ;control_port=0;timing_port=0"; */
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_CLIENT_INSTANCE, rc->client_id));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_TRANSPORT, "RTP/AVP/TCP;unicast;interleaved=0-1;mode=record"));/* ;control_port=0;timing_port=0"; */
 
     res = rtsp_connection_send (rc->rtsp_conn, &request);
     return (res == RTSP_OK) ? RAOP_EOK : RAOP_EFAIL;
@@ -306,17 +320,19 @@ raop_rtsp_setup (raop_client_t *rc)
 static gint
 raop_rtsp_record (raop_client_t *rc)
 {
-    RTSPMessage request = { 0 };
+    RTSPMessage request = { (RTSPMsgType)0 };
     RTSPResult res;
 
     res = rtsp_message_init_request (RTSP_RECORD, rc->rtsp_url, &request);
-    rtsp_message_add_header (&request, RTSP_HDR_CLIENT_INSTANCE, rc->client_id);
-    rtsp_message_add_header (&request, RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT);
-    rtsp_message_add_header (&request, RTSP_HDR_RANGE, "npt=0-");
-    rtsp_message_add_header (&request, RTSP_HDR_RTP_INFO, "seq=0;rtptime=0");
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_CLIENT_INSTANCE, rc->client_id));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_RANGE, "npt=0-"));
+    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_RTP_INFO, "seq=0;rtptime=0"));
     res = rtsp_connection_send (rc->rtsp_conn, &request);
     return (res == RTSP_OK) ? RAOP_EOK : RAOP_EFAIL;
 }
+
+#define rtsp_message_add_header(t, a, b) t.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(a,b))
 
 /*
  * XXX: take seq and rtptime as args
@@ -324,7 +340,7 @@ raop_rtsp_record (raop_client_t *rc)
 static gint
 raop_rtsp_flush (raop_client_t *rc)
 {
-    RTSPMessage request = { 0 };
+    RTSPMessage request = { (RTSPMsgType)0 };
     RTSPResult res;
 
     res = rtsp_message_init_request (RTSP_FLUSH, rc->rtsp_url, &request);
@@ -339,16 +355,16 @@ raop_rtsp_flush (raop_client_t *rc)
 static gint
 raop_rtsp_set_params (raop_client_t *rc)
 {
-    RTSPMessage request = { 0 };
+    RTSPMessage request = { (RTSPMsgType)0 };
     RTSPResult res;
-    gchar *volume;
+    gchar volume[200];
 
     res = rtsp_message_init_request (RTSP_SET_PARAMETER, rc->rtsp_url, &request);
     rtsp_message_add_header (&request, RTSP_HDR_CLIENT_INSTANCE, rc->client_id);
     rtsp_message_add_header (&request, RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT);
 
     rtsp_message_add_header (&request, RTSP_HDR_CONTENT_TYPE, "text/parameters");
-    volume = g_strdup_printf ("volume: %f\r\n", rc->volume);
+    sprintf(volume, "volume: %f\r\n", rc->volume);
     rtsp_message_set_body (&request, (guint8 *) volume, strlen (volume));
     res = rtsp_connection_send (rc->rtsp_conn, &request);
 
@@ -360,7 +376,7 @@ raop_rtsp_set_params (raop_client_t *rc)
 static gint
 raop_rtsp_teardown (raop_client_t *rc)
 {
-    RTSPMessage request = { 0 };
+    RTSPMessage request = { (RTSPMsgType)0 };
     RTSPResult res;
 
     res = rtsp_message_init_request (RTSP_TEARDOWN, rc->rtsp_url, &request);
@@ -436,7 +452,9 @@ raop_client_connect (raop_client_t *rc, const gchar *host, gushort port)
 
     /* XXX: do this after successful connect? */
     rc->cli_host = g_strdup (get_local_addr (rtsp_fd));
-    rc->rtsp_url = g_strdup_printf ("rtsp://%s/%s", rc->cli_host,
+    char buf[4096];
+    rc->rtsp_url = strdup(buf);
+    sprintf(buf, "rtsp://%s/%s", rc->cli_host,
                                     rc->session_id);
     rtsp_connection_create (rtsp_fd, &rc->rtsp_conn);
 
@@ -530,7 +548,7 @@ raop_client_handle_io (raop_client_t *rc, int fd, GIOCondition cond)
             /* read data sent by ApEx we don't know what
              * it is, just read it for now, and doesn't
              * even care about returnval */
-            read (rc->stream_fd, buf, 56);
+            recv (rc->stream_fd, buf, 56, 0);
         }
     } else if (cond == G_IO_ERR) {
         /* XXX */
@@ -667,8 +685,8 @@ raop_client_disconnect (raop_client_t *rc)
         return RAOP_EINVAL;
 
     raop_rtsp_teardown (rc);
-    close (rc->rtsp_conn->fd);
-    close (rc->stream_fd);
+    shutdown (rc->rtsp_conn->fd, 0);
+    shutdown (rc->stream_fd, 0);
     rc->rtsp_conn->fd = rc->stream_fd = -1;
     rtsp_connection_free (rc->rtsp_conn);
     rc->io_state = RAOP_IO_UNDEFINED;

@@ -145,14 +145,15 @@ const gchar *
 rtsp_method_as_text (RTSPMethod method)
 {
   gint i;
+  int m = (int)method;
 
   if (method == 0)
     return NULL;
 
   i = 0;
-  while ((method & 1) == 0) {
+  while ((m & 1) == 0) {
     i++;
-    method >>= 1;
+    m >>= 1;
   }
   return rtsp_methods[i];
 }
@@ -182,10 +183,10 @@ rtsp_find_header_field (gchar * header)
 
   for (idx = 0; rtsp_headers[idx]; idx++) {
     if (g_ascii_strcasecmp (rtsp_headers[idx], header) == 0) {
-      return idx;
+      return (RTSPHeaderField)idx;
     }
   }
-  return -1;
+  return (RTSPHeaderField)-1;
 }
 
 RTSPMethod
@@ -195,8 +196,8 @@ rtsp_find_method (gchar * method)
 
   for (idx = 0; rtsp_methods[idx]; idx++) {
     if (g_ascii_strcasecmp (rtsp_methods[idx], method) == 0) {
-      return (1 << idx);
+      return (RTSPMethod)(1 << idx);
     }
   }
-  return -1;
+  return (RTSPMethod)-1;
 }

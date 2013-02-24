@@ -19,13 +19,10 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include "glib.h"
+#include <string>
 
 #include "rtspconnection.h"
 
@@ -49,60 +46,76 @@ rtsp_connection_create (gint fd, RTSPConnection ** conn)
 }
 
 static void
-append_header (gint key, gchar * value, GString * str)
+append_header (gint key, gchar * value, std::string& str)
 {
-  const gchar *keystr = rtsp_header_as_text (key);
+  const gchar *keystr = rtsp_header_as_text ((RTSPHeaderField)key);
 
-  g_string_append_printf (str, "%s: %s\r\n", keystr, value);
+  str.append(keystr);
+  str.append(":");
+  str.append(value);
+  str.append("\r\n");
 }
 
 RTSPResult
 rtsp_connection_send (RTSPConnection * conn, RTSPMessage * message)
 {
-  GString *str;
+  std::string str;
   gint towrite;
-  gchar *data;
+  const char *data;
   fd_set fds;
   struct timeval tv;
 
   if (conn == NULL || message == NULL)
     return RTSP_EINVAL;
 
-  str = g_string_new ("");
-
   /* create request string, add CSeq */
-  g_string_append_printf (str, "%s %s RTSP/1.0\r\n"
-      "CSeq: %d\r\n",
-      rtsp_method_as_text (message->type_data.request.method),
-      message->type_data.request.uri, conn->cseq);
+  str.append(rtsp_method_as_text (message->type_data.request.method));
+  str.append(" ");
+  str.append(message->type_data.request.uri);
+  str.append(" RTSP/1.0\r\n");
+  str.append("CSeq: ");
+  char buf[20];
+  itoa(conn->cseq, buf, 10);
+  str.append(buf);
+  str.append("\r\n");
 
   /* append session id if we have one */
   if (conn->session_id[0] != '\0') {
-    rtsp_message_add_header (message, RTSP_HDR_SESSION, conn->session_id);
+      message->hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_SESSION, std::string(conn->session_id)));
+
   }
 
   /* append headers */
-  g_hash_table_foreach (message->hdr_fields, (GHFunc) append_header, str);
+  //g_hash_table_foreach (message->hdr_fields, (GHFunc) append_header, str);
+  for (std::map<RTSPHeaderField,std::string>::iterator it=message->hdr_fields->begin(); it!=message->hdr_fields->end(); ++it) {
+  const gchar *keystr = rtsp_header_as_text(it->first);
+
+  str.append(keystr);
+  str.append(":");
+  str.append(it->second);
+  str.append("\r\n");
+  }
 
   /* append Content-Length and body if needed */
   if (message->body != NULL && message->body_size > 0) {
-    gchar *len;
 
-    len = g_strdup_printf ("%d", message->body_size);
-    append_header (RTSP_HDR_CONTENT_LENGTH, len, str);
-    g_free (len);
+    itoa(message->body_size, buf, 10);
+    append_header (RTSP_HDR_CONTENT_LENGTH, buf, str);
     /* header ends here */
-    g_string_append (str, "\r\n");
-    str =
-        g_string_append_len (str, (gchar *) message->body, message->body_size);
+    str.append("\r\n");
+    str.append((gchar*)message->body);
+    //str =
+    //    g_string_append_len (str, (gchar *) message->body, message->body_size);
   } else {
     /* just end headers */
-    g_string_append (str, "\r\n");
+        str.append("\r\n");
+
+    //g_string_append (str, "\r\n");
   }
 
   /* write request */
-  towrite = str->len;
-  data = str->str;
+  towrite = str.size();
+  data = str.c_str();
 
   tv.tv_sec = 1;
   tv.tv_usec = 0;
@@ -123,7 +136,7 @@ rtsp_connection_send (RTSPConnection * conn, RTSPMessage * message)
       goto write_error;
     }
 
-    written = write (conn->fd, data, towrite);
+    written = send (conn->fd, data, towrite, 0);
     if (written < 0) {
       if (errno != EAGAIN && errno != EINTR)
         goto write_error;
@@ -132,7 +145,6 @@ rtsp_connection_send (RTSPConnection * conn, RTSPMessage * message)
       data += written;
     }
   }
-  g_string_free (str, TRUE);
 
   conn->cseq++;
 
@@ -140,7 +152,7 @@ rtsp_connection_send (RTSPConnection * conn, RTSPMessage * message)
 
 write_error:
   {
-    g_string_free (str, TRUE);
+//    g_string_free (str, TRUE);
     return RTSP_ESYS;
   }
 }
@@ -173,7 +185,7 @@ read_line (gint fd, gchar * buffer, guint size)
       goto read_error;
     }
 
-    r = read (fd, &c, 1);
+    r = recv (fd, &c, 1, 0);
     if (r < 1) {
       if (errno != EAGAIN && errno != EINTR)
         goto read_error;
@@ -251,7 +263,7 @@ parse_response_status (gchar * buffer, RTSPMessage * msg)
   while (g_ascii_isspace (*bptr))
     bptr++;
 
-  rtsp_message_init_response (code, bptr, NULL, msg);
+  rtsp_message_init_response ((RTSPStatusCode)code, bptr, NULL, msg);
 
   return RTSP_OK;
 
@@ -318,7 +330,8 @@ parse_line (gchar * buffer, RTSPMessage * msg)
   if (field != -1) {
     while (g_ascii_isspace (*bptr))
       bptr++;
-    rtsp_message_add_header (msg, field, bptr);
+    msg->hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(field, bptr));
+    //rtsp_message_add_header (msg, field, bptr);
   }
 
   return RTSP_OK;
@@ -361,7 +374,7 @@ read_body (gint fd, glong content_length, RTSPMessage * msg)
       goto read_error;
     }
 
-    r = read (fd, bodyptr, to_read);
+    r = recv (fd, bodyptr, to_read, 0);
     if (r < 0) {
       if (errno != EAGAIN && errno != EINTR)
         goto read_error;
@@ -425,7 +438,7 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
     }
 
     /* read first character, this identifies data messages */
-    ret = read (conn->fd, &c, 1);
+    ret = recv (conn->fd, &c, 1, 0);
     if (ret < 0)
       goto read_error;
     if (ret < 1)
@@ -438,7 +451,7 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
       /* data packets are $<1 byte channel><2 bytes length,BE><data bytes> */
 
       /* read channel, which is the next char */
-      ret = read (conn->fd, &c, 1);
+      ret = recv (conn->fd, &c, 1, 0);
       if (ret < 0)
         goto read_error;
       if (ret < 1)
@@ -448,13 +461,15 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
       rtsp_message_init_data ((gint) c, msg);
 
       /* next two bytes are the length of the data */
-      ret = read (conn->fd, &size, 2);
+      char s[2];
+      ret = recv (conn->fd, s, 2, 0);
+      size = s[0] << 8 | s[1];
       if (ret < 0)
         goto read_error;
       if (ret < 2)
         goto error;
 
-      size = GUINT16_FROM_BE (size);
+      size = ntohs (size); // GUINT16_FROM_BE
 
       /* and read the body */
       res = read_body (conn->fd, size, msg);
@@ -482,7 +497,7 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
 
       if (line == 0) {
         /* first line, check for response status */
-        if (g_str_has_prefix (buffer, "RTSP")) {
+        if (strstr(buffer, "RTSP") == 0) {
           res = parse_response_status (buffer, msg);
         } else {
           res = parse_request_line (buffer, msg);
@@ -498,19 +513,18 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
   /* read the rest of the body if needed */
   if (need_body) {
     /* see if there is a Content-Length header */
-    if (rtsp_message_get_header (msg, RTSP_HDR_CONTENT_LENGTH,
-            &hdrval) == RTSP_OK) {
+      if (msg->hdr_fields && msg->hdr_fields->count(RTSP_HDR_CONTENT_LENGTH) > 0) {
       /* there is, read the body */
-      content_length = atol (hdrval);
+          content_length = atol (msg->hdr_fields->at(RTSP_HDR_CONTENT_LENGTH).c_str());
       res = read_body (conn->fd, content_length, msg);
     }
 
     /* save session id in the connection for further use */
     {
-      gchar *session_id;
+      const char *session_id;
 
-      if (rtsp_message_get_header (msg, RTSP_HDR_SESSION,
-              &session_id) == RTSP_OK) {
+      if (msg->hdr_fields && msg->hdr_fields->count(RTSP_HDR_SESSION) > 0) {
+          session_id = msg->hdr_fields->at(RTSP_HDR_SESSION).c_str();
         gint sesslen, maxlen, i;
 
         sesslen = strlen (session_id);
@@ -548,7 +562,7 @@ rtsp_connection_close (RTSPConnection * conn)
   if (conn == NULL)
     return RTSP_EINVAL;
 
-  res = close (conn->fd);
+  res = shutdown (conn->fd, 0);
   conn->fd = -1;
   if (res != 0)
     goto sys_error;

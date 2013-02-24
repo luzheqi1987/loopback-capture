@@ -20,7 +20,7 @@
 #ifndef __RTSP_CONNECTION_H__
 #define __RTSP_CONNECTION_H__
 
-#include <glib.h>
+#include "glib.h"
 
 #include "rtspdefs.h"
 #include "rtspmessage.h"

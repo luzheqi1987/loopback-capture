@@ -17,6 +17,8 @@
  * Boston, MA 02111-1307, USA.
  */
 
+#include <string.h>
+#include <stdlib.h>
 #include "rtspmessage.h"
 
 RTSPResult
@@ -27,7 +29,7 @@ rtsp_message_new_request (RTSPMethod method, gchar * uri, RTSPMessage ** msg)
   if (msg == NULL || uri == NULL)
     return RTSP_EINVAL;
 
-  newmsg = g_new0 (RTSPMessage, 1);
+  newmsg = g_new0(RTSPMessage, 1);
 
   *msg = newmsg;
 
@@ -46,10 +48,8 @@ rtsp_message_init_request (RTSPMethod method, gchar * uri, RTSPMessage * msg)
   msg->type_data.request.uri = g_strdup (uri);
 
   if (msg->hdr_fields != NULL)
-    g_hash_table_destroy (msg->hdr_fields);
-  msg->hdr_fields =
-      g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_free);
-
+    delete msg->hdr_fields;
+  msg->hdr_fields = new std::map<RTSPHeaderField, std::string>;
   if (msg->body) {
     g_free (msg->body);
     msg->body = NULL;
@@ -88,9 +88,8 @@ rtsp_message_init_response (RTSPStatusCode code, gchar * reason,
   msg->type_data.response.reason = g_strdup (reason);
 
   if (msg->hdr_fields != NULL)
-    g_hash_table_destroy (msg->hdr_fields);
-  msg->hdr_fields =
-      g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_free);
+    delete msg->hdr_fields;
+  msg->hdr_fields = new std::map<RTSPHeaderField, std::string>;
 
   if (msg->body) {
     g_free (msg->body);
@@ -111,51 +110,58 @@ rtsp_message_init_data (gint channel, RTSPMessage * msg)
   if (msg == NULL)
     return RTSP_EINVAL;
 
+  if (msg->hdr_fields != NULL)
+    delete msg->hdr_fields;
+  msg->hdr_fields = new std::map<RTSPHeaderField, std::string>;
+
   msg->type = RTSP_MESSAGE_DATA;
   msg->type_data.data.channel = channel;
 
   return RTSP_OK;
 }
 
-
-RTSPResult
-rtsp_message_add_header (RTSPMessage * msg, RTSPHeaderField field,
-    const gchar * value)
-{
-  if (msg == NULL || value == NULL)
-    return RTSP_EINVAL;
-
-  g_hash_table_insert (msg->hdr_fields, GINT_TO_POINTER (field),
-      g_strdup (value));
-
-  return RTSP_OK;
-}
-
-RTSPResult
-rtsp_message_get_header (RTSPMessage * msg, RTSPHeaderField field,
-    gchar ** value)
-{
-  gchar *val;
-
-  if (msg == NULL || value == NULL)
-    return RTSP_EINVAL;
-
-  val = g_hash_table_lookup (msg->hdr_fields, GINT_TO_POINTER (field));
-  if (val == NULL)
-    return RTSP_ENOTIMPL;
-
-  *value = val;
-
-  return RTSP_OK;
-}
+//
+//RTSPResult
+//rtsp_message_add_header (RTSPMessage * msg, RTSPHeaderField field,
+//    const gchar * value)
+//{
+//  if (msg == NULL || value == NULL)
+//    return RTSP_EINVAL;
+//
+//  msg->hdr_fields[field] = std::string(value);
+//  //g_hash_table_insert (msg->hdr_fields, GINT_TO_POINTER (field),
+//  //    g_strdup (value));
+//
+//  return RTSP_OK;
+//}
+//
+//RTSPResult
+//rtsp_message_get_header (RTSPMessage * msg, RTSPHeaderField field,
+//    gchar ** value)
+//{
+//
+//  if (msg == NULL || value == NULL)
+//    return RTSP_EINVAL;
+//
+//  //val = g_hash_table_lookup (msg->hdr_fields, GINT_TO_POINTER (field));
+//  if (msg->hdr_fields->count(field) == 0)
+//    return RTSP_ENOTIMPL;
+//
+//  std::string s = msg->hdr_fields->at(field);
+//  *value = s.c_str();
+//
+//  return RTSP_OK;
+//}
 
 RTSPResult
 rtsp_message_set_body (RTSPMessage * msg, guint8 * data, guint size)
 {
   if (msg == NULL)
     return RTSP_EINVAL;
+  guint8* newdata = (guint8*)g_malloc(size+1);
+  memcpy(newdata, data, size);
 
-  return rtsp_message_take_body (msg, g_memdup (data, size), size);
+  return rtsp_message_take_body (msg, newdata, size);
 }
 
 RTSPResult

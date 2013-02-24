@@ -20,9 +20,7 @@
 #ifndef __RTSP_DEFS_H__
 #define __RTSP_DEFS_H__
 
-#include <glib.h>
-
-G_BEGIN_DECLS
+#include "glib.h"
 
 typedef enum {
   RTSP_OK       =  0,
@@ -180,6 +178,5 @@ const gchar*    rtsp_status_to_string   (RTSPStatusCode code);
 RTSPHeaderField rtsp_find_header_field  (gchar *header);
 RTSPMethod      rtsp_find_method        (gchar *method);
 
-G_END_DECLS
 
 #endif /* __RTSP_DEFS_H__ */

@@ -2,14 +2,10 @@
 #define _NET_UTILS_H
 
 #include <string.h>
-#include <unistd.h>
+#include <windows.h>
 #include <errno.h>
 
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>  
-#include <netdb.h>
 #include <fcntl.h>
 
 char *get_local_addr(int fd);

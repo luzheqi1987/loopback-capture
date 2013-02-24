@@ -20,14 +20,15 @@
 #ifndef __RTSP_MESSAGE_H__
 #define __RTSP_MESSAGE_H__
 
-#include <glib.h>
+#include "glib.h"
 
 #include "rtspdefs.h"
+#include <map>
+#include <string>
 
 G_BEGIN_DECLS
 
-typedef enum
-{
+typedef enum {
   RTSP_MESSAGE_REQUEST,
   RTSP_MESSAGE_RESPONSE,
   RTSP_MESSAGE_DATA,
@@ -51,7 +52,8 @@ typedef struct _RTSPMessage
     } data;
   } type_data;
 
-  GHashTable    *hdr_fields;
+  std::map<RTSPHeaderField, std::string> *hdr_fields;
+//  GHashTable    *hdr_fields;
 
   guint8        *body;
   guint          body_size;
@@ -70,8 +72,8 @@ RTSPResult      rtsp_message_init_data          (gint channel, RTSPMessage *msg)
 RTSPResult      rtsp_message_free               (RTSPMessage *msg);
 
 
-RTSPResult      rtsp_message_add_header         (RTSPMessage *msg, RTSPHeaderField field, const gchar *value);
-RTSPResult      rtsp_message_get_header         (RTSPMessage *msg, RTSPHeaderField field, gchar **value);
+//RTSPResult      rtsp_message_add_header         (RTSPMessage *msg, RTSPHeaderField field, const gchar *value);
+//RTSPResult      rtsp_message_get_header         (RTSPMessage *msg, RTSPHeaderField field, gchar **value);
 
 RTSPResult      rtsp_message_set_body           (RTSPMessage *msg, guint8 *data, guint size);
 RTSPResult      rtsp_message_take_body          (RTSPMessage *msg, guint8 *data, guint size);

@@ -3,7 +3,7 @@
 #ifndef _RAOP_CLIENT_H
 #define _RAOP_CLIENT_H
 
-#include <glib.h>
+#include "glib.h"
 
 #define RAOP_DEFAULT_IP "10.0.1.1"
 #define RAOP_DEFAULT_PORT 5000
