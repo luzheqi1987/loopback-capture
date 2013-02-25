@@ -84,6 +84,13 @@ Backup*/
 UpgradeLog*.XML
 
 
+# cmake generated stuff
+CMakeCache.txt
+CMakeFiles
+*.dir
+cmake_install.cmake
+*.vcxproj*
+*.sln
 
 ############
 ## Windows
