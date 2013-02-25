@@ -55,7 +55,7 @@ typedef struct _RTSPMessage
   std::map<RTSPHeaderField, std::string> *hdr_fields;
 //  GHashTable    *hdr_fields;
 
-  guint8        *body;
+  gchar          *body;
   guint          body_size;
 
 } RTSPMessage;
@@ -75,9 +75,9 @@ RTSPResult      rtsp_message_free               (RTSPMessage *msg);
 //RTSPResult      rtsp_message_add_header         (RTSPMessage *msg, RTSPHeaderField field, const gchar *value);
 //RTSPResult      rtsp_message_get_header         (RTSPMessage *msg, RTSPHeaderField field, gchar **value);
 
-RTSPResult      rtsp_message_set_body           (RTSPMessage *msg, guint8 *data, guint size);
-RTSPResult      rtsp_message_take_body          (RTSPMessage *msg, guint8 *data, guint size);
-RTSPResult      rtsp_message_get_body           (RTSPMessage *msg, guint8 **data, guint *size);
+RTSPResult      rtsp_message_set_body           (RTSPMessage *msg, gchar *data, guint size);
+RTSPResult      rtsp_message_take_body          (RTSPMessage *msg, gchar *data, guint size);
+RTSPResult      rtsp_message_get_body           (RTSPMessage *msg, gchar **data, guint *size);
 
 G_END_DECLS
 

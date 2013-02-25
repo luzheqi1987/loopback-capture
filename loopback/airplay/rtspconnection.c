@@ -46,12 +46,12 @@ rtsp_connection_create (gint fd, RTSPConnection ** conn)
 }
 
 static void
-append_header (gint key, gchar * value, std::string& str)
+append_header (gint key, const gchar * value, std::string& str)
 {
   const gchar *keystr = rtsp_header_as_text ((RTSPHeaderField)key);
 
   str.append(keystr);
-  str.append(":");
+  str.append(": ");
   str.append(value);
   str.append("\r\n");
 }
@@ -88,12 +88,7 @@ rtsp_connection_send (RTSPConnection * conn, RTSPMessage * message)
   /* append headers */
   //g_hash_table_foreach (message->hdr_fields, (GHFunc) append_header, str);
   for (std::map<RTSPHeaderField,std::string>::iterator it=message->hdr_fields->begin(); it!=message->hdr_fields->end(); ++it) {
-  const gchar *keystr = rtsp_header_as_text(it->first);
-
-  str.append(keystr);
-  str.append(":");
-  str.append(it->second);
-  str.append("\r\n");
+      append_header (it->first, it->second.c_str(), str);
   }
 
   /* append Content-Length and body if needed */
@@ -103,7 +98,7 @@ rtsp_connection_send (RTSPConnection * conn, RTSPMessage * message)
     append_header (RTSP_HDR_CONTENT_LENGTH, buf, str);
     /* header ends here */
     str.append("\r\n");
-    str.append((gchar*)message->body);
+    str.append((gchar*)message->body, message->body_size);
     //str =
     //    g_string_append_len (str, (gchar *) message->body, message->body_size);
   } else {
@@ -114,7 +109,7 @@ rtsp_connection_send (RTSPConnection * conn, RTSPMessage * message)
   }
 
   /* write request */
-  towrite = str.size();
+  towrite = str.length();
   data = str.c_str();
 
   tv.tv_sec = 1;
@@ -386,7 +381,7 @@ read_body (gint fd, glong content_length, RTSPMessage * msg)
   content_length += 1;
 
 done:
-  rtsp_message_set_body (msg, (guint8 *) body, content_length);
+  rtsp_message_set_body (msg, body, content_length);
 
   return RTSP_OK;
 
@@ -402,7 +397,6 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
 {
   gchar buffer[4096];
   gint line;
-  gchar *hdrval;
   glong content_length;
   RTSPResult res;
   gboolean need_body;
@@ -501,7 +495,7 @@ rtsp_connection_receive (RTSPConnection * conn, RTSPMessage * msg)
 
       if (line == 0) {
         /* first line, check for response status */
-        if (strstr(buffer, "RTSP") == 0) {
+        if (strstr(buffer, "RTSP") == buffer) {
           res = parse_response_status (buffer, msg);
         } else {
           res = parse_request_line (buffer, msg);

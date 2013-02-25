@@ -154,18 +154,18 @@ rtsp_message_init_data (gint channel, RTSPMessage * msg)
 //}
 
 RTSPResult
-rtsp_message_set_body (RTSPMessage * msg, guint8 * data, guint size)
+rtsp_message_set_body (RTSPMessage * msg, gchar * data, guint size)
 {
   if (msg == NULL)
     return RTSP_EINVAL;
-  guint8* newdata = (guint8*)g_malloc(size+1);
+  gchar* newdata = (gchar*)g_malloc(size);
   memcpy(newdata, data, size);
 
   return rtsp_message_take_body (msg, newdata, size);
 }
 
 RTSPResult
-rtsp_message_take_body (RTSPMessage * msg, guint8 * data, guint size)
+rtsp_message_take_body (RTSPMessage * msg, gchar * data, guint size)
 {
   if (msg == NULL)
     return RTSP_EINVAL;
@@ -180,7 +180,7 @@ rtsp_message_take_body (RTSPMessage * msg, guint8 * data, guint size)
 }
 
 RTSPResult
-rtsp_message_get_body (RTSPMessage * msg, guint8 ** data, guint * size)
+rtsp_message_get_body (RTSPMessage * msg, gchar ** data, guint * size)
 {
   if (msg == NULL || data == NULL || size == NULL)
     return RTSP_EINVAL;
