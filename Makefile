@@ -1,4 +1,4 @@
-OPENSSL_V=1.0.0e
+OPENSSL_V=1.0.1e
 
 all: openssl-$(OPENSSL_V)/out32/libeay32.lib
 
