@@ -20,12 +20,14 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -50,7 +52,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\openssl-1.0.0e\inc32</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\openssl-1.0.1e\inc32</AdditionalIncludeDirectories>
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
       <CompileAs>CompileAsCpp</CompileAs>
@@ -58,7 +60,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;Winmm.lib;Avrt.lib;ws2_32.lib;..\openssl-1.0.0e\out32\libeay32.lib;..\openssl-1.0.0e\out32\ssleay32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;Winmm.lib;Avrt.lib;ws2_32.lib;..\openssl-1.0.1e\out32\libeay32.lib;..\openssl-1.0.1e\out32\ssleay32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -79,6 +81,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="alac\codec\aglib.h" />
+    <ClInclude Include="alac\codec\ALACAudioTypes.h" />
+    <ClInclude Include="alac\codec\ALACBitUtilities.h" />
+    <ClInclude Include="alac\codec\ALACDecoder.h" />
+    <ClInclude Include="alac\codec\ALACEncoder.h" />
+    <ClInclude Include="alac\codec\dplib.h" />
+    <ClInclude Include="alac\codec\EndianPortable.h" />
+    <ClInclude Include="alac\codec\matrixlib.h" />
     <ClInclude Include="win32\loopback-capture.h" />
     <ClInclude Include="win32\prefs.h" />
     <ClInclude Include="airplay\net_utils.h" />
@@ -90,6 +100,16 @@
     <ClInclude Include="airplay\glib.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="alac\codec\ag_dec.c" />
+    <ClCompile Include="alac\codec\ag_enc.c" />
+    <ClCompile Include="alac\codec\ALACBitUtilities.c" />
+    <ClCompile Include="alac\codec\ALACDecoder.cpp" />
+    <ClCompile Include="alac\codec\ALACEncoder.cpp" />
+    <ClCompile Include="alac\codec\dp_dec.c" />
+    <ClCompile Include="alac\codec\dp_enc.c" />
+    <ClCompile Include="alac\codec\EndianPortable.c" />
+    <ClCompile Include="alac\codec\matrix_dec.c" />
+    <ClCompile Include="alac\codec\matrix_enc.c" />
     <ClCompile Include="win32\guid.cpp" />
     <ClCompile Include="win32\loopback-capture.cpp" />
     <ClCompile Include="win32\main.cpp" />

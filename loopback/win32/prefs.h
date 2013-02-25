@@ -10,7 +10,7 @@ public:
     IMMDevice *m_pMMDevice;
     bool m_bInt16;
     PWAVEFORMATEX m_pwfx;
-    unsigned char* m_AudioBuffer;
+    BYTE* m_AudioBuffer;
     size_t m_AudioBufferSize; // total bytes
     size_t m_AudioBufferLength; // bytes used
     size_t m_AudioBufferLastRead;

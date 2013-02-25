@@ -178,6 +178,8 @@ HRESULT LoopbackCapture(
         return HRESULT_FROM_WIN32(dwErr);
     }    
 
+
+
     // set the waitable timer
     LARGE_INTEGER liFirstFire;
     liFirstFire.QuadPart = -hnsDefaultDevicePeriod / 2; // negative means relative time
@@ -306,32 +308,29 @@ HRESULT LoopbackCapture(
             switch (dwWaitResult)
             {
             case WAIT_OBJECT_0:
-                __try {
-                    while (lBytesToWrite > 0) {
-                        int copy_len = 0;
-                        size_t space_left = prefs->m_AudioBufferSize - prefs->m_AudioBufferLastWrite;
-                        copy_len = lBytesToWrite > space_left ? space_left : lBytesToWrite;
-                        memcpy(prefs->m_AudioBuffer+prefs->m_AudioBufferLastWrite, pData, copy_len);
-                        prefs->m_AudioBufferLastWrite += copy_len;
-                        if (prefs->m_AudioBufferLastWrite >= prefs->m_AudioBufferSize) {
-                            prefs->m_AudioBufferLastWrite = 0;
-                        }
-                        prefs->m_AudioBufferLength += copy_len;
-                        if (prefs->m_AudioBufferLength > prefs->m_AudioBufferSize) {
-                            // overrun
-                            printf("audio buffer overrun\n");
-                            prefs->m_AudioBufferLength = copy_len;
-                            prefs->m_AudioBufferLastRead = prefs->m_AudioBufferLastWrite;
-                        }
-                        lBytesToWrite -= copy_len;
+                while (lBytesToWrite > 0) {
+                    int copy_len = 0;
+                    size_t space_left = prefs->m_AudioBufferSize - prefs->m_AudioBufferLastWrite;
+                    copy_len = lBytesToWrite > space_left ? space_left : lBytesToWrite;
+                    memcpy(prefs->m_AudioBuffer+prefs->m_AudioBufferLastWrite, pData, copy_len);
+                    prefs->m_AudioBufferLastWrite += copy_len;
+                    if (prefs->m_AudioBufferLastWrite >= prefs->m_AudioBufferSize) {
+                        prefs->m_AudioBufferLastWrite = 0;
                     }
+                    prefs->m_AudioBufferLength += copy_len;
+                    if (prefs->m_AudioBufferLength > prefs->m_AudioBufferSize) {
+                        // overrun
+                        printf("audio buffer overrun\n");
+                        prefs->m_AudioBufferLength = copy_len;
+                        prefs->m_AudioBufferLastRead = prefs->m_AudioBufferLastWrite;
+                    } else {
+                        printf("buffer length: %d\n", prefs->m_AudioBufferLength);
+                    }
+                    lBytesToWrite -= copy_len;
                 }
-
-                __finally {
-                    if (! ReleaseMutex(prefs->m_AudioBufferMutex))
-                    {
-                        // TODO: Handle error.
-                    }
+                if (! ReleaseMutex(prefs->m_AudioBufferMutex))
+                {
+                    // TODO: Handle error.
                 }
                 break;
 
@@ -339,6 +338,8 @@ HRESULT LoopbackCapture(
                 return FALSE;
             }
 
+        } else {
+            printf("SILENCE\n");
         }
 
         *pnFrames += nNumFramesToRead;

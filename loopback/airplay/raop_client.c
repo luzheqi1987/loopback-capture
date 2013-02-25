@@ -45,7 +45,12 @@ struct raop_client_struct {
     gchar *apex_host;
     gushort rtsp_port;
     gushort stream_port;
+    guint stream_socket_type;
     gchar *cli_host;
+    gushort control_port;
+    gint control_sock;
+    gushort timing_port;
+    gint timing_sock;
 
     /* rtsp handler */
     RTSPConnection *rtsp_conn;
@@ -78,9 +83,11 @@ struct raop_client_struct {
     guint8 sbuf[RAOP_ALAC_FRAME_SIZE * 2  * 2 + 19]; /* 16-bit stereo */
     guint32 sbuf_size;
     guint32 sbuf_offset;
+    gushort seqno;
+    gboolean seq_started;
 };
 
-static gint raop_client_stream_sample (raop_client_t *rc, guint16 *buf, guint32 len);
+static gint raop_client_stream_sample (raop_client_t *rc, guchar *buf, guint32 len);
 
 /* Helper Functions */
 
@@ -150,20 +157,34 @@ raop_send_sample (raop_client_t *rc)
 {
     gint nwritten;
     gint nleft = rc->sbuf_size - rc->sbuf_offset;
+/*
+    if (rc->seqno == 0 || rc->seqno > 65530) {
+        // send sync packet
+        unsigned char packet[16] = { 0x80, 0x56, 0x00, 0x00 };
+        rc->seqno = 1;
+        hdrlen += 4;
+        sync = true;
+    }*/
+    printf("seq: %d\n", rc->seqno);
 
     if (nleft == 0) {
-        guchar buf[RAOP_ALAC_FRAME_SIZE * 2 * 2];
+        guchar buf[RAOP_ALAC_FRAME_SIZE * 4];
         gint ret;
 
         ret = rc->stream_cb.func (rc->stream_cb.data, buf, sizeof (buf));
         if (ret > 0)
-            raop_client_stream_sample (rc, (guint16 *)buf, ret);
+            raop_client_stream_sample (rc, buf, ret);
 
         nleft = rc->sbuf_size - rc->sbuf_offset;
     }
     /* XXX: check for error */
-    nwritten = tcp_write (rc->stream_fd, (char *) rc->sbuf + rc->sbuf_offset,
-                          nleft);
+    if (rc->stream_socket_type == SOCK_STREAM) {
+        nwritten = tcp_write (rc->stream_fd, (char *) rc->sbuf + rc->sbuf_offset,
+            nleft);
+    } else if (rc->stream_socket_type == SOCK_DGRAM) {
+        nwritten = udp_write (rc->stream_fd, (char *) rc->sbuf + rc->sbuf_offset,
+            nleft, rc->apex_host, rc->stream_port);
+    }
     rc->sbuf_offset += nwritten;
 }
 
@@ -181,7 +202,7 @@ raop_rtsp_get_reply (raop_client_t *rc)
     if (res != RTSP_OK)
         return RAOP_EFAIL;
 
-	// TODO
+    // TODO
     //if (response->hdr_fields->count(RTSP_HDR_AUDIO_JACK_STATUS) > 0) {
     //	RTSP_HDR_AUDIO_JACK_STATUS
     //	params = g_strsplit (ajstatus, "; ", -1);
@@ -207,7 +228,8 @@ raop_rtsp_get_reply (raop_client_t *rc)
         std::string transport = response.hdr_fields->at(RTSP_HDR_TRANSPORT).c_str();
         
         size_t pos = transport.find_last_of("server_port=", std::string::npos);
-        rc->stream_port = strtol (transport.c_str() + pos + strlen ("server_port="), NULL, 10);
+        const char* buf = transport.c_str() + pos + 1;
+        rc->stream_port = strtol (buf, NULL, 10);
     }
 
     return RAOP_EOK;
@@ -235,6 +257,8 @@ b64_encode_alloc (const guchar *data, int size, char **out)
     return size;
 }
 
+#define rtsp_message_add_header(t, a, b) t.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(a,b))
+
 static gint
 raop_rtsp_announce (raop_client_t *rc)
 {
@@ -244,7 +268,7 @@ raop_rtsp_announce (raop_client_t *rc)
     gchar *key;
     gchar *iv;
     gint size;
-    gchar *sdp_buf = g_malloc(20000);
+    gchar *sdp_buf = g_malloc(2000);
     gchar *ac;
     gint ret = RAOP_EOK;
 
@@ -273,10 +297,12 @@ raop_rtsp_announce (raop_client_t *rc)
     }
 
     res = rtsp_message_init_request (RTSP_ANNOUNCE, rc->rtsp_url, &request);
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_CLIENT_INSTANCE, rc->client_id));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_APPLE_CHALLENGE, ac));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(RTSP_HDR_CONTENT_TYPE, "application/sdp"));
+    rtsp_message_add_header(request, RTSP_HDR_CONTENT_TYPE, "application/sdp");
+    rtsp_message_add_header(request, RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT);
+    rtsp_message_add_header(request, RTSP_HDR_CLIENT_INSTANCE, rc->client_id);
+    rtsp_message_add_header(request, RTSP_HDR_APPLE_CHALLENGE, ac);
+    // DACP-ID
+    // Active-Remote
 
     sprintf (sdp_buf, "v=0\r\n"
                                "o=iTunes %s 0 IN IP4 %s\r\n"
@@ -285,12 +311,12 @@ raop_rtsp_announce (raop_client_t *rc)
                                "t=0 0\r\n"
                                "m=audio 0 RTP/AVP 96\r\n"
                                "a=rtpmap:96 AppleLossless\r\n"
-                               "a=fmtp:96 4096 0 16 40 10 14 2 255 0 0 44100\r\n"
+                               "a=fmtp:96 %d 0 16 40 10 14 2 255 0 0 44100\r\n" // frame_size ? sample_size historymult initialhistory kmodifier .... sampling_rate
                                "a=rsaaeskey:%s\r\n"
                                "a=aesiv:%s\r\n",
                                rc->session_id, rc->cli_host,
-                               rc->apex_host, key, iv);
-    rtsp_message_set_body (&request, (guint8 *) sdp_buf, strlen (sdp_buf));
+                               rc->apex_host, RAOP_ALAC_FRAME_SIZE, key, iv);
+    rtsp_message_set_body (&request, sdp_buf, strlen (sdp_buf));
     res = rtsp_connection_send (rc->rtsp_conn, &request);
     if (res != RTSP_OK)
         ret = RAOP_EFAIL;
@@ -309,9 +335,15 @@ raop_rtsp_setup (raop_client_t *rc)
     RTSPResult res;
 
     res = rtsp_message_init_request (RTSP_SETUP, rc->rtsp_url, &request);
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_CLIENT_INSTANCE, rc->client_id));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_TRANSPORT, "RTP/AVP/TCP;unicast;interleaved=0-1;mode=record"));/* ;control_port=0;timing_port=0"; */
+    rtsp_message_add_header(&request, RTSP_HDR_CLIENT_INSTANCE, rc->client_id);
+    rtsp_message_add_header(&request, RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT);
+//    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_TRANSPORT, "RTP/AVP/TCP;unicast;interleaved=0-1;mode=record"));/* ;control_port=0;timing_port=0"; */
+//    rc->stream_socket_type = SOCK_STREAM;
+
+    gchar buf[1024];
+    sprintf(buf, "RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;control_port=%d;timing_port=%d", rc->control_port, rc->timing_port);
+    rtsp_message_add_header(&request, RTSP_HDR_TRANSPORT, buf);/* ;control_port=0;timing_port=0"; */
+    rc->stream_socket_type = SOCK_DGRAM;
 
     res = rtsp_connection_send (rc->rtsp_conn, &request);
     return (res == RTSP_OK) ? RAOP_EOK : RAOP_EFAIL;
@@ -324,15 +356,15 @@ raop_rtsp_record (raop_client_t *rc)
     RTSPResult res;
 
     res = rtsp_message_init_request (RTSP_RECORD, rc->rtsp_url, &request);
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_CLIENT_INSTANCE, rc->client_id));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_RANGE, "npt=0-"));
-    request.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>( RTSP_HDR_RTP_INFO, "seq=0;rtptime=0"));
+    rtsp_message_add_header(&request,  RTSP_HDR_CLIENT_INSTANCE, rc->client_id);
+    rtsp_message_add_header(&request,  RTSP_HDR_USER_AGENT, RAOP_RTSP_USER_AGENT);
+    rtsp_message_add_header(&request,  RTSP_HDR_RANGE, "npt=0-");
+    gchar buf[100];
+    sprintf(buf, "seq=%d;rtptime=0", rc->seqno);
+    rtsp_message_add_header(&request,  RTSP_HDR_RTP_INFO, buf); // seq=28232;rtptime=2881359763
     res = rtsp_connection_send (rc->rtsp_conn, &request);
     return (res == RTSP_OK) ? RAOP_EOK : RAOP_EFAIL;
 }
-
-#define rtsp_message_add_header(t, a, b) t.hdr_fields->insert(std::pair<RTSPHeaderField, std::string>(a,b))
 
 /*
  * XXX: take seq and rtptime as args
@@ -365,10 +397,8 @@ raop_rtsp_set_params (raop_client_t *rc)
 
     rtsp_message_add_header (&request, RTSP_HDR_CONTENT_TYPE, "text/parameters");
     sprintf(volume, "volume: %f\r\n", rc->volume);
-    rtsp_message_set_body (&request, (guint8 *) volume, strlen (volume));
+    rtsp_message_set_body (&request, volume, strlen (volume));
     res = rtsp_connection_send (rc->rtsp_conn, &request);
-
-    g_free (volume);
 
     return (res == RTSP_OK) ? RAOP_EOK : RAOP_EFAIL;
 }
@@ -410,6 +440,13 @@ raop_client_init (raop_client_t **client)
     rc->jack_status = AUDIO_JACK_DISCONNECTED;
     rc->jack_type = AUDIO_JACK_ANALOG;
     rc->volume = RAOP_DEFAULT_VOLUME;
+    rc->control_port = 5991;
+    rc->control_sock = tcp_open(); // FIXME: UDP
+    tcp_listener(rc->control_sock, rc->control_port);
+
+    rc->timing_port = 5992;
+    rc->timing_sock = tcp_open(); // FIXME: UDP
+    tcp_listener(rc->timing_sock, rc->timing_port);
 
     /* setup client_id, aes_key */
     ret = RAND_bytes (rand_buf, sizeof (rand_buf));
@@ -434,6 +471,9 @@ raop_client_connect (raop_client_t *rc, const gchar *host, gushort port)
     rc->rtsp_port = port;
     rc->sbuf_size = 0;
     rc->sbuf_offset = 0;
+    srand(time(NULL));
+    rc->seqno = rand();
+    rc->seq_started = false;
 
     RAND_bytes (rand_buf, sizeof (rand_buf));
     g_snprintf (rc->session_id, 11, "%u", *((guint *) rand_buf));
@@ -453,9 +493,9 @@ raop_client_connect (raop_client_t *rc, const gchar *host, gushort port)
     /* XXX: do this after successful connect? */
     rc->cli_host = g_strdup (get_local_addr (rtsp_fd));
     char buf[4096];
-    rc->rtsp_url = strdup(buf);
     sprintf(buf, "rtsp://%s/%s", rc->cli_host,
                                     rc->session_id);
+    rc->rtsp_url = strdup(buf);
     rtsp_connection_create (rtsp_fd, &rc->rtsp_conn);
 
     rc->rtsp_state = RAOP_RTSP_CONNECTING;
@@ -499,8 +539,14 @@ raop_client_handle_io (raop_client_t *rc, int fd, GIOCondition cond)
                 ret = raop_rtsp_set_params (rc);
                 if (ret != RAOP_EOK)
                     return ret;
+                ret = raop_rtsp_set_params (rc);
+                if (ret != RAOP_EOK)
+                    return ret;
                 rc->rtsp_state = RAOP_RTSP_DONE;
             } else if (rc->rtsp_state & RAOP_RTSP_SETPARAMS) {
+                ret = raop_rtsp_set_params (rc);
+                if (ret != RAOP_EOK)
+                    return ret;
                 ret = raop_rtsp_set_params (rc);
                 if (ret != RAOP_EOK)
                     return ret;
@@ -513,6 +559,8 @@ raop_client_handle_io (raop_client_t *rc, int fd, GIOCondition cond)
             }
             rc->io_state ^= RAOP_IO_RTSP_WRITE;
             rc->io_state |= RAOP_IO_RTSP_READ;
+            if (!(rc->io_state & RAOP_RTSP_CONNECTED))
+                Sleep(200);
         } else if (fd == rc->stream_fd) { /* stream data */
             raop_send_sample (rc);
         }
@@ -527,16 +575,24 @@ raop_client_handle_io (raop_client_t *rc, int fd, GIOCondition cond)
                 return ret;
             rc->io_state ^= RAOP_IO_RTSP_READ;
             if (rc->rtsp_state == RAOP_RTSP_DONE) {
-                rc->stream_fd = tcp_open ();
-                if (rc->stream_fd == -1)
-                    return RAOP_ESYS;
+                if (rc->stream_socket_type == SOCK_STREAM) {
+                    rc->stream_fd = tcp_open ();
+                    if (rc->stream_fd == -1)
+                        return RAOP_ESYS;
+                } else if (rc->stream_socket_type == SOCK_DGRAM) {
+                    rc->stream_fd = udp_open();
+                    if (rc->stream_fd == -1)
+                        return RAOP_ESYS;
+                }
                 ret = set_sock_nonblock (rc->stream_fd);
                 if (ret == -1)
                     return RAOP_ESYS;
-                ret = tcp_connect (rc->stream_fd, rc->apex_host,
-                                   rc->stream_port);
-                if (ret == -1 && errno != EINPROGRESS)
-                    return RAOP_ESYS;
+                if (rc->stream_socket_type == SOCK_STREAM) {
+                    ret = tcp_connect (rc->stream_fd, rc->apex_host,
+                        rc->stream_port);
+                    if (ret == -1 && errno != EINPROGRESS)
+                        return RAOP_ESYS;
+                }
                 rc->io_state |= RAOP_IO_STREAM_WRITE;
                 rc->io_state |= RAOP_IO_STREAM_READ;
                 rc->rtsp_state = RAOP_RTSP_CONNECTED;
@@ -548,7 +604,9 @@ raop_client_handle_io (raop_client_t *rc, int fd, GIOCondition cond)
             /* read data sent by ApEx we don't know what
              * it is, just read it for now, and doesn't
              * even care about returnval */
-            recv (rc->stream_fd, buf, 56, 0);
+            if (rc->stream_socket_type == SOCK_STREAM) {
+                recv (rc->stream_fd, buf, 56, 0);
+            }
         }
     } else if (cond == G_IO_ERR) {
         /* XXX */
@@ -558,26 +616,38 @@ raop_client_handle_io (raop_client_t *rc, int fd, GIOCondition cond)
 }
 
 static gint
-raop_client_stream_sample (raop_client_t *rc, guint16 *buf, guint32 len)
+raop_client_stream_sample (raop_client_t *rc, guchar *audiobuf, guint32 audiobuflen)
 {
-    guint8 hdr[] = {0x24, 0x00, 0x00, 0x00,
-                    0xF0, 0xFF, 0x00, 0x00,
+    int hdrlen = 12;
+    guint8 hdr[] = {0x80, 0x60, 0x00, 0x00,
+                    0xab, 0xbe, 0x00, 0x00,
                     0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00};
+                    };
+    // ?
+    // Packet Type (0x60=Audio Data)
+    // Sequence
+    // Sequence
+    // 4-7 RTP timestamp
+    // 8-11 SSRC
+    // 12... audio
+
     int i;
-    short cnt;
     guint8 *pbuf;
     guint8 iv[16];
-    guint32 offset = 0;
 
-    cnt = len + 3 + 12;
-    cnt = GUINT16_TO_BE (cnt);
-    memcpy (hdr + 2, (void *) &cnt, sizeof (cnt));
+    if (!rc->seq_started) {
+        hdr[1] = 0xe0;
+        rc->seq_started = true;
+    }
+    gushort seqno = htons(rc->seqno);
+    memcpy (hdr + 2, (void *) &seqno, sizeof (seqno));
 
     memset (rc->sbuf, 0, sizeof (rc->sbuf));
-    memcpy (rc->sbuf, hdr, sizeof (hdr));
-    pbuf = rc->sbuf + sizeof (hdr);
+    memcpy (rc->sbuf, hdr, hdrlen);
 
+    pbuf = rc->sbuf + hdrlen;
+
+#if 0
     /* ALAC frame header */
     write_bits (pbuf, 1, 3, &offset); /* # of channels */
     write_bits (pbuf, 0, 4, &offset); /* output waiting? */
@@ -591,13 +661,18 @@ raop_client_stream_sample (raop_client_t *rc, guint16 *buf, guint32 len)
         write_bits (pbuf, (buf[i]) >> 8, 8, &offset);
         write_bits (pbuf, (buf[i]) & 0xff, 8, &offset);
     }
+#else
+    memcpy(pbuf, audiobuf, audiobuflen); // real ALAC
+#endif
     memcpy (iv, rc->aes_iv, sizeof (iv));
     AES_cbc_encrypt (pbuf, pbuf,
-                     (len + 3) / 16 * 16,
-                     rc->aes_key, iv, TRUE);
+                        (audiobuflen / 16) * 16,
+                        rc->aes_key, iv, AES_ENCRYPT);
 
-    rc->sbuf_size = len + 3 + sizeof (hdr);
+    rc->sbuf_size = audiobuflen + hdrlen;
     rc->sbuf_offset = 0;
+    
+    rc->seqno++;
 
     return RAOP_EOK;
 }

@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="ALAC">
+      <UniqueIdentifier>{dc6ce3e9-9b1a-487c-ab1c-2d332ded9143}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="airplay\net_utils.h">
@@ -41,6 +44,30 @@
     </ClInclude>
     <ClInclude Include="win32\prefs.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\aglib.h">
+      <Filter>ALAC</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\ALACAudioTypes.h">
+      <Filter>ALAC</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\ALACBitUtilities.h">
+      <Filter>ALAC</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\ALACDecoder.h">
+      <Filter>ALAC</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\ALACEncoder.h">
+      <Filter>ALAC</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\dplib.h">
+      <Filter>ALAC</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\EndianPortable.h">
+      <Filter>ALAC</Filter>
+    </ClInclude>
+    <ClInclude Include="alac\codec\matrixlib.h">
+      <Filter>ALAC</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -73,6 +100,36 @@
     </ClCompile>
     <ClCompile Include="win32\raop.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\ag_dec.c">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\ag_enc.c">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\ALACBitUtilities.c">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\ALACDecoder.cpp">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\ALACEncoder.cpp">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\dp_dec.c">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\dp_enc.c">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\EndianPortable.c">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\matrix_dec.c">
+      <Filter>ALAC</Filter>
+    </ClCompile>
+    <ClCompile Include="alac\codec\matrix_enc.c">
+      <Filter>ALAC</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

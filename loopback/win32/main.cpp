@@ -117,19 +117,19 @@ int do_everything(int argc, LPCWSTR argv[]) {
         CloseHandle(hStopEvent);
         return -__LINE__;
     }
-
-    CreateThread(
+    
+    HANDLE hRaopThread = CreateThread(
         NULL, 0,
         raop_thread, &prefs,
         0, NULL
     );
-
+    
 
     printf("Press Enter to quit...\n");
 
     // wait for the thread to terminate early
     // or for the user to press (and release) Enter
-    HANDLE rhHandles[2] = { hThread, hStdIn };
+    HANDLE rhHandles[3] = { hThread, hRaopThread, hStdIn };
 
     bool bKeepWaiting = true;
     while (bKeepWaiting) {
@@ -141,7 +141,13 @@ int do_everything(int argc, LPCWSTR argv[]) {
                 bKeepWaiting = false;
                 break;
 
-            case WAIT_OBJECT_0 + 1: // hStdIn
+            case WAIT_OBJECT_0 + 1: // hRaopThread
+                printf("RAOP thread terminated early - something bad happened\n");
+                SetEvent(hStopEvent);
+                bKeepWaiting = false;
+                break;
+
+            case WAIT_OBJECT_0 + 2: // hStdIn
                 // see if any of them was an Enter key-up event
                 INPUT_RECORD rInput[128];
                 DWORD nEvents;

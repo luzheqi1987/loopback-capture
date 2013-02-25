@@ -14,5 +14,8 @@ int tcp_open(void);
 int tcp_connect(int sock_fd, const char *host, unsigned int port);
 int tcp_write(int fd, const char *buf, int n);
 int tcp_read(int fd, char *buf, int n);
+int udp_open();
+int udp_write(int fd, const char *buf, int n, const char *host, unsigned int port);
+int tcp_listener(int fd, int port);
 
 #endif /* _NET_UTILS_H */

@@ -11,7 +11,7 @@
 #define RAOP_MIN_VOLUME -144
 #define RAOP_MAX_VOLUME 0
 
-#define RAOP_ALAC_FRAME_SIZE 4096
+#define RAOP_ALAC_FRAME_SIZE (352)
 #define RAOP_ALAC_NUM_CHANNELS 2
 #define RAOP_ALAC_BITS_PER_SAMPLE 16
 
@@ -30,7 +30,7 @@ typedef int (*raop_client_stream_cb_func_t) (void *, guchar *, int);
 
 typedef struct {
     raop_client_stream_cb_func_t func;
-    void *data;	
+    void *data;
 } raop_client_stream_cb_t;
 
 

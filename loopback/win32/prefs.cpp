@@ -32,13 +32,14 @@ CPrefs::CPrefs(int argc, LPCWSTR argv[], HRESULT &hr)
 , m_bInt16(true)
 , m_pwfx(NULL)
 , m_AudioBufferLength(0)
-, m_AudioBufferSize(32000)
+, m_AudioBufferSize(64*1024*10)
 , m_AudioBufferLastRead(0)
 , m_AudioBufferLastWrite(0)
 , m_AudioBuffer(NULL)
 {
     m_AudioBufferMutex = CreateMutex(NULL, FALSE, NULL);
     m_AudioBuffer = (unsigned char*)malloc(m_AudioBufferSize);
+    ZeroMemory(m_AudioBuffer, m_AudioBufferSize);
 
     switch (argc) {
         case 2:
